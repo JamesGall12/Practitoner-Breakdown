@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Greencare Practitioner Analytics Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 50%, #cbd5e1 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            color: #1f2937;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            color: #6b7280;
+            font-size: 1.1rem;
+        }
+        
+        .practitioner-selector {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            border: 1px solid #e5e7eb;
+        }
+        
+        .selector-label {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 15px;
+        }
+        
+        select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 1rem;
+            background: white;
+            cursor: pointer;
+        }
+        
+        select:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+        
+        .dashboard-content {
+            display: none;
+        }
+        
+        .dashboard-content.active {
+            display: block;
+        }
+        
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        
+        .metric-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            border: 1px solid #e5e7eb;
+            text-align: center;
+        }
+        
+        .metric-title {
+            color: #6b7280;
+            font-size: 0.9rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+        }
+        
+        .metric-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 5px;
+        }
+        
+        .metric-subtitle {
+            color: #6b7280;
+            font-size: 0.9rem;
+        }
+        
+        .chart-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+        
+        .chart-container {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            border: 1px solid #e5e7eb;
+        }
+        
+        .chart-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .chart-canvas {
+            position: relative;
+            height: 300px;
+        }
+        
+        .table-container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            overflow: hidden;
+            border: 1px solid #e5e7eb;
+            margin-bottom: 30px;
+        }
+        
+        .table-header {
+            background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+            padding: 25px;
+            color: white;
+        }
+        
+        .table-header h2 {
+            font-size: 1.5rem;
+            margin-bottom: 8px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th, td {
+            padding: 15px 20px;
+            text-align: left;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        
+        th {
+            background: #f9fafb;
+            font-weight: 600;
+            color: #374151;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.5px;
+        }
+        
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 50vh;
+            flex-direction: column;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 15px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .no-data {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6b7280;
+            font-size: 1.1rem;
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .metrics-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .chart-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Greencare Practitioner Analytics</h1>
+            <p>Comprehensive Performance & Patient Demographics Dashboard</p>
+        </div>
+        
+        <div class="practitioner-selector">
+            <div class="selector-label">Select Practitioner to Analyze:</div>
+            <select id="practitionerSelect">
+                <option value="">Choose a practitioner...</option>
+            </select>
+        </div>
+        
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <div>Loading practitioner data...</div>
+        </div>
+        
+        <div id="dashboard" class="dashboard-content">
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-title">Total Appointments</div>
+                    <div class="metric-value" id="totalAppointments">0</div>
+                    <div class="metric-subtitle">All time</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-title">Initial Consultations</div>
+                    <div class="metric-value" id="initialConsults">0</div>
+                    <div class="metric-subtitle">New patients</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-title">Follow-up Appointments</div>
+                    <div class="metric-value" id="followUps">0</div>
+                    <div class="metric-subtitle">Return visits</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-title">Unique Patients</div>
+                    <div class="metric-value" id="uniquePatients">0</div>
+                    <div class="metric-subtitle">Individuals treated</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-title">Completion Rate</div>
+                    <div class="metric-value" id="completionRate">0%</div>
+                    <div class="metric-subtitle">Appointments completed</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-title">Avg Age</div>
+                    <div class="metric-value" id="avgAge">0</div>
+                    <div class="metric-subtitle">Years</div>
+                </div>
+            </div>
+            
+            <div class="chart-grid">
+                <div class="chart-container">
+                    <div class="chart-title">Appointment Categories</div>
+                    <div class="chart-canvas">
+                        <canvas id="categoryChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="chart-container">
+                    <div class="chart-title">Patient Age Distribution</div>
+                    <div class="chart-canvas">
+                        <canvas id="ageChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="chart-container">
+                    <div class="chart-title">Gender Distribution</div>
+                    <div class="chart-canvas">
+                        <canvas id="genderChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="chart-container">
+                    <div class="chart-title">Monthly Appointment Trends</div>
+                    <div class="chart-canvas">
+                        <canvas id="monthlyChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="table-container">
+                <div class="table-header">
+                    <h2>Detailed Appointment Breakdown</h2>
+                    <p>Comprehensive analysis of appointment types and patterns</p>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Appointment Type</th>
+                            <th>Count</th>
+                            <th>Percentage</th>
+                            <th>Category</th>
+                        </tr>
+                    </thead>
+                    <tbody id="appointmentBreakdown">
+                        <!-- Data will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div id="noData" class="no-data" style="display: none;">
+            <h3>No Data Available</h3>
+            <p>Please select a practitioner to view their analytics.</p>
+        </div>
+    </div>
+
+    <script>
+        let allData = [];
+        let charts = {};
+        
+        async function loadCSVData() {
+            try {
+                // In a real deployment, you would load this from your server
+                // For now, we'll use a representative sample of your data
+                const response = await fetch('Copy of Dashboard Data  Dashboard Data 1.csv');
+                const csvText = await response.text();
+                return csvText;
+            } catch (error) {
+                console.log('Could not load CSV file, using sample data');
+                // Sample data representing your actual structure
+                return `Patient ID,DOB,SEX,BOOKEDBY,Practitioner,APPOINTMENTDATE,APPOINTMENTTYPE,APPOINTMENT_STATUS
+2082,28/11/1994 00:00:00,Female,Vanessa Smith,Aarons Gauntlet Rogers,25/03/2024 00:00:00,Follow Up - Tom,Completed
+2177,24/03/2004 00:00:00,Male,Vanessa Smith,Sandhya Bibin,18/03/2024 00:00:00,Follow Up - NexGen,Completed
+6419,14/09/1981 00:00:00,Male,Vanessa Smith,Sandhya Bibin,09/03/2024 00:00:00,Follow up - Aspley,Completed
+1234,15/05/1990 00:00:00,Female,Emma Lane,Emma Lane,10/04/2024 00:00:00,Initial Consult - Tom,Completed
+5678,22/12/1985 00:00:00,Male,James Moxon,James Moxon,15/04/2024 00:00:00,Telehealth Initial,Completed
+9012,30/08/1975 00:00:00,Female,Kushal Porwal,Kushal Porwal,20/04/2024 00:00:00,Hair Loss Appointment,Completed
+3456,05/03/1995 00:00:00,Male,Thomas Mathew,Thomas Mathew,25/04/2024 00:00:00,Scripts,Completed
+7890,18/07/1988 00:00:00,Female,Julius Ajayi,Julius Ajayi,30/04/2024 00:00:00,Initial Consult - NexGen,Completed
+1111,12/04/1992 00:00:00,Male,Hollie Johnson,Hollie Johnson,05/05/2024 00:00:00,Follow Up - Chatswood,Completed
+2222,28/09/1987 00:00:00,Female,Jeremy Chou,Jeremy Chou,08/05/2024 00:00:00,Initial Consult - Newport,Completed
+3333,16/11/1983 00:00:00,Male,Julia Segal,Julia Segal,12/05/2024 00:00:00,Follow Up - Kushal,Completed
+4444,07/02/1996 00:00:00,Female,Laura Lawrence,Laura Lawrence,15/05/2024 00:00:00,Telehealth follow up,Completed
+5555,23/06/1979 00:00:00,Male,Luke White,Luke White,18/05/2024 00:00:00,Initial Consult - Other,Completed
+6666,14/08/1991 00:00:00,Female,Ronnie Varkey,Ronnie Varkey,22/05/2024 00:00:00,Follow Up - Terraloft,Completed
+7777,03/01/1986 00:00:00,Male,Thomas Mathew,Thomas Mathew,25/05/2024 00:00:00,Initial Consult - Bondi,Completed
+8888,19/10/1993 00:00:00,Female,Vanessa Smith,Vanessa Smith,28/05/2024 00:00:00,Men's Health Appointment,Completed
+9999,25/07/1984 00:00:00,Male,Dia Hasmukh Chouhan,Dia Hasmukh Chouhan,01/06/2024 00:00:00,Follow Up - Lane Cove,Completed
+1010,11/12/1989 00:00:00,Female,Emma Lane,Emma Lane,04/06/2024 00:00:00,Initial Consult - Punchbowl,Completed
+2020,08/05/1977 00:00:00,Male,James Moxon,James Moxon,07/06/2024 00:00:00,Women's Health Appointment,Completed
+3030,26/03/1998 00:00:00,Female,Jordan Brown,Jordan Brown,10/06/2024 00:00:00,Follow Up - Other,Completed`;
+            }
+        }
+
+        function parseCSV(csvText) {
+            return Papa.parse(csvText, {
+                header: true,
+                dynamicTyping: true,
+                skipEmptyLines: true,
+                transformHeader: function(header) {
+                    return header.trim();
+                }
+            }).data;
+        }
+
+        function calculateAge(dobString) {
+            if (!dobString) return null;
+            
+            const dobParts = dobString.split('/');
+            if (dobParts.length < 3) return null;
+            
+            try {
+                const day = parseInt(dobParts[0]);
+                const month = parseInt(dobParts[1]) - 1; // JS months are 0-indexed
+                const yearPart = dobParts[2].split(' ')[0]; // Remove time part
+                const year = parseInt(yearPart);
+                
+                if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
+                
+                const dobDate = new Date(year, month, day);
+                const today = new Date();
+                let age = today.getFullYear() - dobDate.getFullYear();
+                const monthDiff = today.getMonth() - dobDate.getMonth();
+                if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dobDate.getDate())) {
+                    age--;
+                }
+                return age > 0 && age < 150 ? age : null; // Validate reasonable age range
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function categorizeAppointment(appointmentType) {
+            const type = appointmentType.toLowerCase().trim();
+            if (type.includes('initial') || type.includes('new patient')) {
+                return 'Initial Consultations';
+            } else if (type.includes('follow')) {
+                return 'Follow-ups';
+            } else if (type.includes('telehealth') || type.includes('telephone')) {
+                return 'Telehealth';
+            } else if (type.includes('hair loss') || type.includes("men's health") || type.includes("women's health")) {
+                return 'Specialty Services';
+            } else if (type.includes('script') || type.includes('oos') || type.includes('medication') || type.includes('nurse')) {
+                return 'Administrative';
+            } else {
+                return 'Other';
+            }
+        }
+
+        function getAgeGroup(age) {
+            if (age >= 18 && age <= 25) return '18-25';
+            if (age >= 26 && age <= 35) return '26-35';
+            if (age >= 36 && age <= 45) return '36-45';
+            if (age >= 46 && age <= 55) return '46-55';
+            if (age >= 56 && age <= 65) return '56-65';
+            if (age > 65) return '65+';
+            return 'Unknown';
+        }
+
+        async function processData() {
+            const csvData = await loadCSVData();
+            const rawData = parseCSV(csvData);
+            
+            allData = rawData.map(row => {
+                // Clean string data
+                const practitioner = row.Practitioner ? row.Practitioner.toString().trim() : '';
+                const appointmentType = row.APPOINTMENTTYPE ? row.APPOINTMENTTYPE.toString().trim() : '';
+                const sex = row.SEX ? row.SEX.toString().trim() : '';
+                const status = row.APPOINTMENT_STATUS ? row.APPOINTMENT_STATUS.toString().trim() : '';
+                
+                const age = calculateAge(row.DOB);
+                let appointmentDate = null;
+                let month = null;
+                
+                // Parse appointment date
+                if (row.APPOINTMENTDATE) {
+                    try {
+                        const dateStr = row.APPOINTMENTDATE.toString();
+                        const dateParts = dateStr.split('/');
+                        if (dateParts.length >= 3) {
+                            const day = parseInt(dateParts[0]);
+                            const monthNum = parseInt(dateParts[1]);
+                            const yearPart = dateParts[2].split(' ')[0];
+                            const year = parseInt(yearPart);
+                            
+                            appointmentDate = new Date(year, monthNum - 1, day);
+                            month = `${year}-${String(monthNum).padStart(2, '0')}`;
+                        }
+                    } catch (e) {
+                        // Skip invalid dates
+                    }
+                }
+                
+                return {
+                    patientId: row['Patient ID'],
+                    dob: row.DOB,
+                    age: age,
+                    ageGroup: getAgeGroup(age),
+                    sex: sex,
+                    bookedBy: row.BOOKEDBY ? row.BOOKEDBY.toString().trim() : '',
+                    practitioner: practitioner,
+                    appointmentDate: appointmentDate,
+                    appointmentType: appointmentType,
+                    category: categorizeAppointment(appointmentType),
+                    status: status,
+                    month: month
+                };
+            }).filter(row => row.practitioner && row.practitioner !== ''); // Remove rows without practitioner
+
+            console.log('Processed data:', allData.length, 'appointments');
+            console.log('Practitioners found:', [...new Set(allData.map(row => row.practitioner))].length);
+            
+            populatePractitionerSelect();
+        }
+
+        function populatePractitionerSelect() {
+            const practitioners = [...new Set(allData.map(row => row.practitioner))].sort();
+            const select = document.getElementById('practitionerSelect');
+            
+            practitioners.forEach(practitioner => {
+                const option = document.createElement('option');
+                option.value = practitioner;
+                option.textContent = practitioner;
+                select.appendChild(option);
+            });
+
+            select.addEventListener('change', (e) => {
+                if (e.target.value) {
+                    updateDashboard(e.target.value);
+                } else {
+                    hideDashboard();
+                }
+            });
+        }
+
+        function updateDashboard(practitioner) {
+            const practitionerData = allData.filter(row => row.practitioner === practitioner);
+            
+            if (practitionerData.length === 0) {
+                showNoData();
+                return;
+            }
+
+            // Update metrics
+            const totalAppointments = practitionerData.length;
+            const initialConsults = practitionerData.filter(row => row.category === 'Initial Consultations').length;
+            const followUps = practitionerData.filter(row => row.category === 'Follow-ups').length;
+            const uniquePatients = new Set(practitionerData.map(row => row.patientId)).size;
+            const completedAppointments = practitionerData.filter(row => row.status.toLowerCase().includes('completed')).length;
+            const completionRate = totalAppointments > 0 ? Math.round((completedAppointments / totalAppointments) * 100) : 0;
+            const validAges = practitionerData.filter(row => row.age && row.age > 0).map(row => row.age);
+            const avgAge = validAges.length > 0 ? Math.round(validAges.reduce((sum, age) => sum + age, 0) / validAges.length) : 0;
+
+            document.getElementById('totalAppointments').textContent = totalAppointments.toLocaleString();
+            document.getElementById('initialConsults').textContent = initialConsults.toLocaleString();
+            document.getElementById('followUps').textContent = followUps.toLocaleString();
+            document.getElementById('uniquePatients').textContent = uniquePatients.toLocaleString();
+            document.getElementById('completionRate').textContent = `${completionRate}%`;
+            document.getElementById('avgAge').textContent = avgAge || 'N/A';
+
+            // Update charts
+            updateCategoryChart(practitionerData);
+            updateAgeChart(practitionerData);
+            updateGenderChart(practitionerData);
+            updateMonthlyChart(practitionerData);
+            updateAppointmentBreakdown(practitionerData);
+
+            showDashboard();
+        }
+
+        function updateCategoryChart(data) {
+            const categories = ['Initial Consultations', 'Follow-ups', 'Telehealth', 'Specialty Services', 'Administrative', 'Other'];
+            const counts = categories.map(cat => data.filter(row => row.category === cat).length);
+            
+            if (charts.category) charts.category.destroy();
+            
+            const ctx = document.getElementById('categoryChart').getContext('2d');
+            charts.category = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: categories,
+                    datasets: [{
+                        data: counts,
+                        backgroundColor: [
+                            '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#6b7280'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateAgeChart(data) {
+            const ageGroups = ['18-25', '26-35', '36-45', '46-55', '56-65', '65+'];
+            const counts = ageGroups.map(group => data.filter(row => row.ageGroup === group).length);
+            
+            if (charts.age) charts.age.destroy();
+            
+            const ctx = document.getElementById('ageChart').getContext('2d');
+            charts.age = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ageGroups,
+                    datasets: [{
+                        label: 'Patients',
+                        data: counts,
+                        backgroundColor: '#3b82f6'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateGenderChart(data) {
+            const maleCount = data.filter(row => row.sex.toLowerCase() === 'male').length;
+            const femaleCount = data.filter(row => row.sex.toLowerCase() === 'female').length;
+            const otherCount = data.filter(row => row.sex && !['male', 'female'].includes(row.sex.toLowerCase())).length;
+            
+            if (charts.gender) charts.gender.destroy();
+            
+            const ctx = document.getElementById('genderChart').getContext('2d');
+            charts.gender = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: ['Male', 'Female', 'Other'],
+                    datasets: [{
+                        data: [maleCount, femaleCount, otherCount],
+                        backgroundColor: ['#3b82f6', '#ec4899', '#6b7280']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateMonthlyChart(data) {
+            const monthlyData = {};
+            data.forEach(row => {
+                if (row.month) {
+                    monthlyData[row.month] = (monthlyData[row.month] || 0) + 1;
+                }
+            });
+
+            const sortedMonths = Object.keys(monthlyData).sort();
+            const counts = sortedMonths.map(month => monthlyData[month]);
+            
+            if (charts.monthly) charts.monthly.destroy();
+            
+            const ctx = document.getElementById('monthlyChart').getContext('2d');
+            charts.monthly = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: sortedMonths.map(month => {
+                        const [year, monthNum] = month.split('-');
+                        const date = new Date(year, monthNum - 1);
+                        return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+                    }),
+                    datasets: [{
+                        label: 'Appointments',
+                        data: counts,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateAppointmentBreakdown(data) {
+            const typeBreakdown = {};
+            data.forEach(row => {
+                const type = row.appointmentType;
+                if (type) {
+                    typeBreakdown[type] = {
+                        count: (typeBreakdown[type]?.count || 0) + 1,
+                        category: row.category
+                    };
+                }
+            });
+
+            const tbody = document.getElementById('appointmentBreakdown');
+            tbody.innerHTML = '';
+
+            const sortedTypes = Object.entries(typeBreakdown)
+                .sort((a, b) => b[1].count - a[1].count);
+
+            sortedTypes.forEach(([type, info]) => {
+                const percentage = ((info.count / data.length) * 100).toFixed(1);
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${type}</td>
+                    <td>${info.count}</td>
+                    <td>${percentage}%</td>
+                    <td><span style="padding: 4px 8px; background: ${getCategoryColor(info.category)}; border-radius: 4px; font-size: 0.8rem; color: white;">${info.category}</span></td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function getCategoryColor(category) {
+            const colors = {
+                'Initial Consultations': '#3b82f6',
+                'Follow-ups': '#10b981',
+                'Telehealth': '#f59e0b',
+                'Specialty Services': '#ef4444',
+                'Administrative': '#8b5cf6',
+                'Other': '#6b7280'
+            };
+            return colors[category] || '#6b7280';
+        }
+
+        function showDashboard() {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('noData').style.display = 'none';
+            document.getElementById('dashboard').classList.add('active');
+        }
+
+        function hideDashboard() {
+            document.getElementById('dashboard').classList.remove('active');
+            document.getElementById('noData').style.display = 'block';
+        }
+
+        function showNoData() {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('dashboard').classList.remove('active');
+            document.getElementById('noData').style.display = 'block';
+        }
+
+        // Initialize dashboard
+        window.addEventListener('load', () => {
+            setTimeout(async () => {
+                try {
+                    await processData();
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('noData').style.display = 'block';
+                } catch (error) {
+                    console.error('Error loading data:', error);
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('noData').innerHTML = '<h3>Error Loading Data</h3><p>Please ensure the CSV file is available and try again.</p>';
+                    document.getElementById('noData').style.display = 'block';
+                }
+            }, 1500);
+        });
+    </script>
+</body>
+</html>
