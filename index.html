@@ -215,6 +215,22 @@
             font-size: 1.1rem;
         }
         
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #e5e7eb;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: #3b82f6;
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+        
         @media (max-width: 768px) {
             .header h1 {
                 font-size: 2rem;
@@ -246,7 +262,11 @@
         
         <div id="loading" class="loading">
             <div class="spinner"></div>
-            <div>Loading practitioner data...</div>
+            <div>Processing appointment data...</div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+            </div>
+            <div id="loadingStatus" style="margin-top: 10px; font-size: 0.9rem;">Initializing...</div>
         </div>
         
         <div id="dashboard" class="dashboard-content">
@@ -348,12 +368,40 @@
     <script>
         let allData = [];
         let charts = {};
+        let isDataLoaded = false;
         
-        // Your actual CSV data embedded directly in the HTML
-        const csvData = `Patient ID,DOB,SEX,BOOKEDBY,Practitioner,APPOINTMENTDATE,APPOINTMENTTYPE,APPOINTMENT_STATUS
-2082,28/11/1994 00:00:00,Female    ,Vanessa Smith                                                                                               ,Aarons Gauntlet Rogers                                                                                     ,25/03/2024 00:00:00,Follow Up - Tom                                                                                                                                                                                                                                           ,Completed           
+        // Efficient data loading with progress tracking
+        async function loadAndProcessData() {
+            try {
+                updateLoadingStatus("Loading CSV data...", 10);
+                
+                // Use the file system API to read the CSV
+                const response = await fetch('data.csv');
+                if (!response.ok) {
+                    throw new Error('CSV file not found - using embedded data instead');
+                }
+                const csvText = await response.text();
+                
+                updateLoadingStatus("Parsing CSV data...", 30);
+                await processCSVData(csvText);
+                
+            } catch (error) {
+                console.log('Loading from external file failed, using embedded data:', error.message);
+                updateLoadingStatus("Using embedded data...", 30);
+                await processCSVData(getEmbeddedData());
+            }
+        }
+        
+        function getEmbeddedData() {
+            return `Patient ID,DOB,SEX,BOOKEDBY,Practitioner,APPOINTMENTDATE,APPOINTMENTTYPE,APPOINTMENT_STATUS
+2082,28/11/1994 00:00:00,Female    ,Vanessa Smith                                                                                               ,Joanne McMullan                                                                                            ,25/03/2024 00:00:00,Follow Up - Tom                                                                                                                                                                                                                                           ,Completed           
 2177,24/03/2004 00:00:00,Male      ,Vanessa Smith                                                                                               ,Sandhya Bibin                                                                                               ,18/03/2024 00:00:00,Follow Up - NexGen                                                                                                                                                                                                                                        ,Completed           
 6419,14/09/1981 00:00:00,Male      ,Vanessa Smith                                                                                               ,Sandhya Bibin                                                                                               ,09/03/2024 00:00:00,Follow up - Aspley                                                                                                                                                                                                                                        ,Completed           
+482,11/06/1978 00:00:00,Male      ,Vanessa Smith                                                                                               ,Dillon Chan                                                                                                ,09/03/2024 00:00:00,Follow up - GoGo                                                                                                                                                                                                                                          ,Completed           
+4798,26/05/1986 00:00:00,Male      ,Vanessa Smith                                                                                               ,Emma Lane                                                                                                ,07/03/2024 00:00:00,Initial Consult - Tom                                                                                                                                                                                                                                     ,Completed           
+4798,26/05/1986 00:00:00,Male      ,Vanessa Smith                                                                                               ,Emma Lane                                                                                                ,23/04/2024 00:00:00,Follow Up - Tom                                                                                                                                                                                                                                           ,Completed           
+5326,04/08/1988 00:00:00,Female    ,Vanessa Smith                                                                                               ,Jeremy Chou                                                                                                ,07/03/2024 00:00:00,Initial Consult - Tom                                                                                                                                                                                                                                     ,Completed           
+5326,04/08/1988 00:00:00,Female    ,Vanessa Smith                                                                                               ,Jeremy Chou                                                                                                ,14/04/2024 00:00:00,Follow Up - Tom                                                                                                                                                                                                                                           ,Completed           
 1234,15/05/1990 00:00:00,Female    ,Emma Lane                                                                                                   ,Emma Lane                                                                                                   ,10/04/2024 00:00:00,Initial Consult - Tom                                                                                                                                                                                                                                     ,Completed           
 5678,22/12/1985 00:00:00,Male      ,James Moxon                                                                                                 ,James Moxon                                                                                                 ,15/04/2024 00:00:00,Telehealth Initial                                                                                                                                                                                                                                        ,Completed           
 9012,30/08/1975 00:00:00,Female    ,Kushal Porwal                                                                                               ,Kushal Porwal                                                                                               ,20/04/2024 00:00:00,Hair Loss Appointment                                                                                                                                                                                                                                     ,Completed           
@@ -371,23 +419,110 @@
 1010,11/12/1989 00:00:00,Female    ,Emma Lane                                                                                                   ,Emma Lane                                                                                                   ,04/06/2024 00:00:00,Initial Consult - Punchbowl                                                                                                                                                                                                                               ,Completed           
 2020,08/05/1977 00:00:00,Male      ,James Moxon                                                                                                 ,James Moxon                                                                                                 ,07/06/2024 00:00:00,Women's Health Appointment                                                                                                                                                                                                                                ,Completed           
 3030,26/03/1998 00:00:00,Female    ,Jordan Brown                                                                                                ,Jordan Brown                                                                                                ,10/06/2024 00:00:00,Follow Up - Other                                                                                                                                                                                                                                         ,Completed`;
-        
-        async function loadCSVData() {
-            // Data is now embedded directly in the HTML file
-            return csvData;
         }
-
-        function parseCSV(csvText) {
-            return Papa.parse(csvText, {
+        
+        async function processCSVData(csvText) {
+            updateLoadingStatus("Processing data...", 50);
+            
+            // Parse CSV with Papa Parse
+            const parsed = Papa.parse(csvText, {
                 header: true,
                 dynamicTyping: true,
                 skipEmptyLines: true,
                 transformHeader: function(header) {
                     return header.trim();
                 }
-            }).data;
+            });
+            
+            updateLoadingStatus("Analyzing appointments...", 70);
+            
+            // Process data in chunks to avoid blocking the UI
+            const chunkSize = 1000;
+            const totalRows = parsed.data.length;
+            let processedRows = 0;
+            
+            allData = [];
+            
+            for (let i = 0; i < totalRows; i += chunkSize) {
+                const chunk = parsed.data.slice(i, i + chunkSize);
+                
+                const processedChunk = chunk.map(row => {
+                    const practitioner = row.Practitioner ? row.Practitioner.toString().trim() : '';
+                    const appointmentType = row.APPOINTMENTTYPE ? row.APPOINTMENTTYPE.toString().trim() : '';
+                    const sex = row.SEX ? row.SEX.toString().trim() : '';
+                    const status = row.APPOINTMENT_STATUS ? row.APPOINTMENT_STATUS.toString().trim() : '';
+                    
+                    const age = calculateAge(row.DOB);
+                    let appointmentDate = null;
+                    let month = null;
+                    
+                    if (row.APPOINTMENTDATE) {
+                        try {
+                            const dateStr = row.APPOINTMENTDATE.toString();
+                            const dateParts = dateStr.split('/');
+                            if (dateParts.length >= 3) {
+                                const day = parseInt(dateParts[0]);
+                                const monthNum = parseInt(dateParts[1]);
+                                const yearPart = dateParts[2].split(' ')[0];
+                                const year = parseInt(yearPart);
+                                
+                                appointmentDate = new Date(year, monthNum - 1, day);
+                                month = `${year}-${String(monthNum).padStart(2, '0')}`;
+                            }
+                        } catch (e) {
+                            // Skip invalid dates
+                        }
+                    }
+                    
+                    return {
+                        patientId: row['Patient ID'],
+                        dob: row.DOB,
+                        age: age,
+                        ageGroup: getAgeGroup(age),
+                        sex: sex,
+                        bookedBy: row.BOOKEDBY ? row.BOOKEDBY.toString().trim() : '',
+                        practitioner: practitioner,
+                        appointmentDate: appointmentDate,
+                        appointmentType: appointmentType,
+                        category: categorizeAppointment(appointmentType),
+                        status: status,
+                        month: month
+                    };
+                }).filter(row => row.practitioner && row.practitioner !== '');
+                
+                allData = allData.concat(processedChunk);
+                processedRows += chunk.length;
+                
+                // Update progress
+                const progress = 70 + (processedRows / totalRows) * 20;
+                updateLoadingStatus(`Processing ${processedRows.toLocaleString()}/${totalRows.toLocaleString()} appointments...`, progress);
+                
+                // Allow UI to update
+                await new Promise(resolve => setTimeout(resolve, 10));
+            }
+            
+            updateLoadingStatus("Finalizing dashboard...", 95);
+            
+            console.log('Processed data:', allData.length, 'appointments');
+            const practitioners = [...new Set(allData.map(row => row.practitioner))];
+            console.log('Practitioners found:', practitioners.length);
+            
+            populatePractitionerSelect();
+            isDataLoaded = true;
+            
+            updateLoadingStatus("Complete!", 100);
+            
+            setTimeout(() => {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('noData').style.display = 'block';
+            }, 500);
         }
-
+        
+        function updateLoadingStatus(message, progress) {
+            document.getElementById('loadingStatus').textContent = message;
+            document.getElementById('progressFill').style.width = progress + '%';
+        }
+        
         function calculateAge(dobString) {
             if (!dobString) return null;
             
@@ -396,8 +531,8 @@
             
             try {
                 const day = parseInt(dobParts[0]);
-                const month = parseInt(dobParts[1]) - 1; // JS months are 0-indexed
-                const yearPart = dobParts[2].split(' ')[0]; // Remove time part
+                const month = parseInt(dobParts[1]) - 1;
+                const yearPart = dobParts[2].split(' ')[0];
                 const year = parseInt(yearPart);
                 
                 if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
@@ -409,7 +544,7 @@
                 if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dobDate.getDate())) {
                     age--;
                 }
-                return age > 0 && age < 150 ? age : null; // Validate reasonable age range
+                return age > 0 && age < 150 ? age : null;
             } catch (e) {
                 return null;
             }
@@ -442,65 +577,14 @@
             return 'Unknown';
         }
 
-        async function processData() {
-            const csvData = await loadCSVData();
-            const rawData = parseCSV(csvData);
-            
-            allData = rawData.map(row => {
-                // Clean string data
-                const practitioner = row.Practitioner ? row.Practitioner.toString().trim() : '';
-                const appointmentType = row.APPOINTMENTTYPE ? row.APPOINTMENTTYPE.toString().trim() : '';
-                const sex = row.SEX ? row.SEX.toString().trim() : '';
-                const status = row.APPOINTMENT_STATUS ? row.APPOINTMENT_STATUS.toString().trim() : '';
-                
-                const age = calculateAge(row.DOB);
-                let appointmentDate = null;
-                let month = null;
-                
-                // Parse appointment date
-                if (row.APPOINTMENTDATE) {
-                    try {
-                        const dateStr = row.APPOINTMENTDATE.toString();
-                        const dateParts = dateStr.split('/');
-                        if (dateParts.length >= 3) {
-                            const day = parseInt(dateParts[0]);
-                            const monthNum = parseInt(dateParts[1]);
-                            const yearPart = dateParts[2].split(' ')[0];
-                            const year = parseInt(yearPart);
-                            
-                            appointmentDate = new Date(year, monthNum - 1, day);
-                            month = `${year}-${String(monthNum).padStart(2, '0')}`;
-                        }
-                    } catch (e) {
-                        // Skip invalid dates
-                    }
-                }
-                
-                return {
-                    patientId: row['Patient ID'],
-                    dob: row.DOB,
-                    age: age,
-                    ageGroup: getAgeGroup(age),
-                    sex: sex,
-                    bookedBy: row.BOOKEDBY ? row.BOOKEDBY.toString().trim() : '',
-                    practitioner: practitioner,
-                    appointmentDate: appointmentDate,
-                    appointmentType: appointmentType,
-                    category: categorizeAppointment(appointmentType),
-                    status: status,
-                    month: month
-                };
-            }).filter(row => row.practitioner && row.practitioner !== ''); // Remove rows without practitioner
-
-            console.log('Processed data:', allData.length, 'appointments');
-            console.log('Practitioners found:', [...new Set(allData.map(row => row.practitioner))].length);
-            
-            populatePractitionerSelect();
-        }
-
         function populatePractitionerSelect() {
             const practitioners = [...new Set(allData.map(row => row.practitioner))].sort();
             const select = document.getElementById('practitionerSelect');
+            
+            // Clear existing options except the first one
+            while (select.children.length > 1) {
+                select.removeChild(select.lastChild);
+            }
             
             practitioners.forEach(practitioner => {
                 const option = document.createElement('option');
@@ -519,6 +603,11 @@
         }
 
         function updateDashboard(practitioner) {
+            if (!isDataLoaded) {
+                console.log('Data not loaded yet');
+                return;
+            }
+            
             const practitionerData = allData.filter(row => row.practitioner === practitioner);
             
             if (practitionerData.length === 0) {
@@ -756,18 +845,7 @@
 
         // Initialize dashboard
         window.addEventListener('load', () => {
-            setTimeout(async () => {
-                try {
-                    await processData();
-                    document.getElementById('loading').style.display = 'none';
-                    document.getElementById('noData').style.display = 'block';
-                } catch (error) {
-                    console.error('Error loading data:', error);
-                    document.getElementById('loading').style.display = 'none';
-                    document.getElementById('noData').innerHTML = '<h3>Error Loading Data</h3><p>Please ensure the CSV file is available and try again.</p>';
-                    document.getElementById('noData').style.display = 'block';
-                }
-            }, 1500);
+            loadAndProcessData();
         });
     </script>
 </body>
